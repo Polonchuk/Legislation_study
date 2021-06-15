@@ -1,0 +1,6 @@
+*.log
+*.json
+*.docx
+docs/
+env/
+__pycache__/
