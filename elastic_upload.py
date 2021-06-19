@@ -1,4 +1,4 @@
-import requests, json, pathlib
+import json, pathlib
 from elasticsearch import Elasticsearch
 import configparser
 
@@ -46,7 +46,7 @@ def create_index(index_name):
                             "Comments": {'type': 'long'}
                         }
                     },
-                    "IDProject": {'type': 'text'},
+                    "IDProject": {'type': 'keyword'},
                     "Date": {'type': 'date'},
                     "PublishDate": {'type': 'date'},
                     "Title": {'type': 'text'},
@@ -102,12 +102,17 @@ def create_index(index_name):
                     #___аттрибуты проекта, полученные со "страницы" самого проекта ("inner meta")___
                     "planned_stages": [{'type': 'keyword'}],
                     "current_stage": {'type': 'keyword'},
+                    "keywords": [{'type': 'keyword'}],
+                    "justification": {'type': 'text'},
+                    "linked_docs": {'type': 'text'},
+                    "comments": {'type': 'text'},
 
                     "Text_version_1": {
                         'type': 'nested',
                         'properties': {
                             "version_stage": {'type': 'short'},
                             "version_number_on_stage": {'type': 'short'},
+                            "text_version_name": {'type': 'text'},
                             "version_timestamp": {'type': 'keyword'},
                             "version_download_code": {'type': 'keyword'},
                             "version_text": {
@@ -121,6 +126,7 @@ def create_index(index_name):
                         'properties': {
                             "version_stage": {'type': 'short'},
                             "version_number_on_stage": {'type': 'short'},
+                            "text_version_name": {'type': 'text'},
                             "version_timestamp": {'type': 'keyword'},
                             "version_download_code": {'type': 'keyword'},
                             "version_text": {
@@ -134,6 +140,7 @@ def create_index(index_name):
                         'properties': {
                             "version_stage": {'type': 'short'},
                             "version_number_on_stage": {'type': 'short'},
+                            "text_version_name": {'type': 'text'},
                             "version_timestamp": {'type': 'keyword'},
                             "version_download_code": {'type': 'keyword'},
                             "version_text": {
@@ -147,6 +154,7 @@ def create_index(index_name):
                         'properties': {
                             "version_stage": {'type': 'short'},
                             "version_number_on_stage": {'type': 'short'},
+                            "text_version_name": {'type': 'text'},
                             "version_timestamp": {'type': 'keyword'},
                             "version_download_code": {'type': 'keyword'},
                             "version_text": {
@@ -160,6 +168,7 @@ def create_index(index_name):
                         'properties': {
                             "version_stage": {'type': 'short'},
                             "version_number_on_stage": {'type': 'short'},
+                            "text_version_name": {'type': 'text'},
                             "version_timestamp": {'type': 'keyword'},
                             "version_download_code": {'type': 'keyword'},
                             "version_text": {
@@ -172,6 +181,7 @@ def create_index(index_name):
                         'type': 'nested',
                         'properties': {
                             "ORV_result": {'type': 'keyword'},
+                            "ORV_version_name": {'type': 'text'},
                             "ORV_text_timestamp": {'type': 'keyword'},
                             "ORV_download_code": {'type': 'keyword'},
                             "ORV_conclusion_text": {
@@ -184,6 +194,7 @@ def create_index(index_name):
                         'type': 'nested',
                         'properties': {
                             "ORV_result": {'type': 'keyword'},
+                            "ORV_version_name": {'type': 'text'},
                             "ORV_text_timestamp": {'type': 'keyword'},
                             "ORV_download_code": {'type': 'keyword'},
                             "ORV_conclusion_text": {
@@ -327,6 +338,22 @@ def compose_upload_data_to_es(docs_list, index_name):
             doc_dataset["planned_stages"] = doc_inner_meta['planned_stages']
             doc_dataset["current_stage"] = doc_inner_meta['current_stage']
 
+            doc_dataset["justification"] = doc_inner_meta['justification']
+            doc_dataset["linked_docs"] = doc_inner_meta['linked_docs']
+            doc_dataset["comments"] = doc_inner_meta['comments']
+            doc_dataset["keywords"] = []
+
+            doc_keywords = doc_inner_meta['keywords']
+            doc_keywords_del = doc_keywords.replace(';', ',')
+            doc_keywords_split = doc_keywords_del.split(',')
+            if type(doc_keywords_split) == list:
+                for keyword in doc_keywords_split:
+                    keyword_strip = keyword.strip()
+                    doc_dataset["keywords"].append(keyword_strip)
+            else:
+                keyword_strip = doc_keywords_split.strip()
+                doc_dataset["keywords"].append(keyword_strip)
+
             text_versions_list = doc_inner_meta['text_versions']
             # today_date_str = date.today().strftime('%Y%m%d')
             version_download_timestamp = doc_inner_meta['timestamp']
@@ -341,12 +368,14 @@ def compose_upload_data_to_es(docs_list, index_name):
                 if upload_doc_version_text(version_file_name):
                     doc_version_text = upload_doc_version_text(version_file_name)
                     version_stage = int(doc_version_text[0][0]["stage"])
-
                     # print(f'{version_file_name} version_stage: {version_stage}')
-
                     version_stage_name = doc_inner_meta["planned_stages"][version_stage - 1]
-
                     # print(f'{version_file_name} version_stage_name: {version_stage_name}')
+
+                    version_site_names = doc_inner_meta["text_version_names"]
+                    for site_name in version_site_names:
+                        if [*site_name][0] == version_attrs:
+                            site_name_text = [*site_name.values()][0]
 
                     version_stage_name_split = version_stage_name.split(' ')
                     if 'ОРВ' in version_stage_name_split:
@@ -354,6 +383,7 @@ def compose_upload_data_to_es(docs_list, index_name):
                         doc_dataset[orv_map_name] = {
                             "ORV_stage": version_stage,
                             "ORV_result": doc_inner_meta["procedure_result"],
+                            "ORV_version_name": site_name_text,
                             "ORV_text_timestamp": doc_inner_meta["timestamp"],
                             "ORV_download_code": version_code,
                             "ORV_conclusion_text": str(doc_version_text)
@@ -367,6 +397,7 @@ def compose_upload_data_to_es(docs_list, index_name):
                         doc_dataset[text_map_name] = {
                             "version_stage": version_stage,
                             "version_number_on_stage": int(doc_version_text[0][0]["stage_version"]),
+                            "text_version_name": site_name_text,
                             "version_timestamp": doc_inner_meta["timestamp"],
                             "version_download_code": version_code,
                             "version_text": str(doc_version_text)

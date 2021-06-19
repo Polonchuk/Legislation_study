@@ -1,12 +1,10 @@
 import requests, json, time, pathlib
 from requests.adapters import HTTPAdapter
-# from requests.exceptions import ConnectionError
 from datetime import date, datetime
 from docx2python import docx2python
-# from bs4 import BeautifulSoup
 import selenium
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
+# from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -176,136 +174,250 @@ def download_doc_file(doc_inner_meta):
     today_date_str = date.today().strftime('%Y%m%d')
 
     for version in text_versions_list:
-        
-        version_attrs = [*version][0]
-        version_code = [*version.values()][0]
-        
-        # print(f'ID: {doc_ID}; version: {version_attrs}; code: {version_code}')
-        params = {'fileid': version_code}
-        
-        folder_name = config['DEFAULT']['DOCS_SUBDIRECTORY_NAME']
-        doc_path = pathlib.Path.cwd()/folder_name/f'{doc_ID}_{version_attrs}_{today_date_str}.docx'
-
-        try:
-            response = requests.get(download_link, params=params, allow_redirects=True)
-            # response.raise_for_status()    
-            if response.content:
-                with open(doc_path, 'wb') as b_file:
-                    b_file.write(response.content)  
-                
-                    print(f'{doc_ID}_{version_attrs}_{today_date_str}.docx сохранен успешно.')
+        if [*version.values()][0] != None:
+            version_attrs = [*version][0]
+            version_code = [*version.values()][0]
             
-            else:
-                print(f'Документ с ID {doc_ID} версии {version_attrs} при запросе по коду вернул пустой doc файл.')
-
-        except(requests.RequestException, ValueError):
-            print(f'Сетевая ошибка. Документ ID {doc_ID} версия {version_attrs} не получен.')
-        
-        sleep_time = config.getint('HTML_INTERACTIONS', 'TEXT_FILES_DOWNLOADING_TIMESLEEP')
-        time.sleep(sleep_time)
-
-
-def get_doc_inner_meta(docs_list):
-
-    for doc_record in docs_list:
-        driver = webdriver.Firefox()
-
-        doc_ID = str(doc_record['ID']) 
-        doc_title = (doc_record['Title'])
-
-        today_date_str = date.today().strftime('%Y%m%d')
-
-        doc_inner_meta = {'ID': doc_ID, 'planned_stages': [], 'current_stage': '', 'text_versions': [], 'procedure_result': '', 'timestamp': today_date_str}
-        # Не могу найти способ (interact_html_6.py) получить со страницы проекта 'likes': '', 'dislikes': ''
-        print(f'Получаем данные со страницы проекта  {doc_ID}: "{doc_title}"')
-        
-        inner_meta_url = config['HTML_INTERACTIONS']['DOC_PROJECT_INNER_META_URL']
-        doc_url = inner_meta_url + doc_ID      
-        try:
-            driver.get(doc_url)
-            time.sleep(3)
+            # print(f'ID: {doc_ID}; version: {version_attrs}; code: {version_code}')
+            params = {'fileid': version_code}
+            
+            folder_name = config['DEFAULT']['DOCS_SUBDIRECTORY_NAME']
+            doc_path = pathlib.Path.cwd()/folder_name/f'{doc_ID}_{version_attrs}_{today_date_str}.docx'
 
             try:
-                columns_presence = EC.presence_of_element_located((By.CLASS_NAME, 'h-tl-cols-wrap'))
-                WebDriverWait(driver, 3).until(columns_presence)
-            except Exception as ex:
-                print(f'Ошибка парсинга: {ex}')
-            
-            doc_stage_columns = driver.find_element_by_class_name('h-tl-cols-wrap')
+                response = requests.get(download_link, params=params, allow_redirects=True)
+                # response.raise_for_status()    
+                if response.content:
+                    with open(doc_path, 'wb') as b_file:
+                        b_file.write(response.content)  
                     
+                        print(f'{doc_ID}_{version_attrs}_{today_date_str}.docx сохранен успешно.')
+                
+                else:
+                    print(f'Документ с ID {doc_ID} версии {version_attrs} при запросе по коду вернул пустой doc файл.')
+
+            except(requests.RequestException, ValueError):
+                print(f'Сетевая ошибка. Документ ID {doc_ID} версия {version_attrs} не получен.')
+            
+            sleep_time = config.getint('HTML_INTERACTIONS', 'TEXT_FILES_DOWNLOADING_TIMESLEEP')
+            time.sleep(sleep_time)
+
+
+def read_docs_list(docs_list):
+
+    for doc_record in docs_list:
+        doc_ID = str(doc_record['ID']) 
+        doc_title = (doc_record['Title'])
+        
+        get_doc_inner_meta(doc_ID, doc_title)
+
+
+def get_doc_inner_meta(doc_ID, doc_title):
+
+    driver = webdriver.Firefox()
+
+    today_date_str = date.today().strftime('%Y%m%d')
+    doc_inner_meta = {'ID': doc_ID, 'planned_stages': [], 'current_stage': '', 'keywords': '', 'justification': '', 'linked_docs': '', 'comments': '', 'text_versions': [], 'text_version_names': [], 'procedure_result': '', 'timestamp': today_date_str}
+
+    print(f'Получаем данные со страницы проекта  {doc_ID}: "{doc_title}"')
+    
+    inner_meta_url = config['HTML_INTERACTIONS']['DOC_PROJECT_INNER_META_URL']
+    doc_url = inner_meta_url + doc_ID      
+    try:
+        driver.get(doc_url)
+        # time.sleep(3)
+
+        try:
+            WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, 'h-tl-cols-wrap')))        
+            doc_stage_columns = driver.find_element_by_class_name('h-tl-cols-wrap')
+#_____________________Пробуем найти на странице маркер результата процедуры "Оценка регулирующего воздействия"_                   
             try:
                 has_result = doc_stage_columns.find_element_by_xpath('.//i[@class="enum-ProcedureResult"]')
                 doc_inner_meta['procedure_result'] = has_result.get_attribute('data-val')
 
             except:
                 doc_inner_meta['procedure_result'] = 'no_result'
-
-            
+#______________________Собираем колонки с этапами утверждения проекта, как список элементов___________________
             doc_stage_columns_list = doc_stage_columns.find_elements_by_xpath('./child::*')
             current_found = False
-            
+#______________________Анализируем каждый этап (колонку) отдельно_______________________________
             column_number = 1
-            for col in doc_stage_columns_list:            
+
+            for col in doc_stage_columns_list: 
+#_______________________Получаем название этапа__________________________________________________           
                 column_name = col.find_element_by_xpath('.//p[@class="text-center visible-lg card-wrap-title"]').text
                 doc_inner_meta['planned_stages'].append(column_name)
-                
+#_______________________Проверяем, является ли колонка текущей стадией проекта______________________              
                 try:
-                    is_current = col.find_element_by_xpath('.//i[@class="stage-status"]')
+                    col.find_element_by_xpath('.//i[@class="stage-status"]')
                 
                 except:
                     doc_inner_meta['current_stage'] = column_name
                     current_found = True
                     # print(f'Ура! {column_name} текущая стадия!')
-                
+#_Начинаем поиск в колонке "видимых" (присутствующих без дополнительных операций на странице) ссылок на текстовые файлы_                 
                 try:
                     file_tags = col.find_elements_by_xpath('.//a[@class="file-link"]')
-
+#_Если ссылка присутствует, пробуем получить "код" документа для дальнейшего скачивания__________
                     tag_number = 1
                     file_tag_link = False
                     file_tag_code = False
                     for tag in file_tags:
 
-                        try:
-                            doc_code_raw = tag.get_attribute('onclick')
-                            doc_code = doc_code_raw.split("'")[1] 
+                        if tag.get_attribute('onclick'):
+                            doc_tobe_code = tag.get_attribute('onclick')
+                            doc_code = doc_tobe_code.split("'")[1] 
                             file_tag_code = True
-                        except:
-                            
-                            try:
+                        else:                            
+                            if tag.get_attribute('href'):
                                 doc_tobe_code = tag.get_attribute('href')
                                 doc_code = doc_tobe_code.split("=")[1]
                                 file_tag_link = True
-                            except:
-                                print('"file-link" - no code')
-
+                        
+                        doc_version_name = f'stage_{column_number}_version_{tag_number}'
+#___Если код получен, сохраняем сам код, порядковый номер стадии, документа в текущей стадии и текст, отображенный на ссылке___
                         if file_tag_link == True or file_tag_code == True:
-                            doc_version_name = f'stage_{column_number}_version_{tag_number}'
+
+                            doc_site_name = tag.find_element_by_xpath('.//span[1]').text
                             doc_version_element = {doc_version_name: doc_code}                        
                             doc_inner_meta['text_versions'].append(doc_version_element)
-                            tag_number += 1
-                        else:
-                            doc_inner_meta['text_versions'].append(f'"file-link" found but text code not defined')
+                            doc_version_name_element = {doc_version_name: doc_site_name}
+                            doc_inner_meta['text_version_names'].append(doc_version_name_element)
+                        else: 
+                            doc_version_element = {doc_version_name: None}                        
+                            doc_inner_meta['text_versions'].append(doc_version_element)
+                        tag_number += 1
 
-                except(selenium.common.exceptions.NoSuchElementException):
-                    doc_inner_meta['text_versions'].append(f'no_text')
-                
+                except:
+                    print(f'Непосредственно в колонке "{column_name}" текста документа нет.')
+
+                column_name_split = column_name.split(' ')
+#______________________Собираем информацию в разделе "Паспорт проекта"________________________
+                if column_number == 1:
+                    try:
+                        # WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/a[@class="btn btn-default"]')))
+                        # col.find_element_by_xpath('.//a[@class="btn btn-default"]').click()
+                        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, 'Паспорт')))
+                        col.find_element_by_partial_link_text('Паспорт').click()
+                        time.sleep(2)
+                        try:
+                            WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'dt')))
+                            window_meta_info_rows = driver.find_elements_by_css_selector('dt')
+                            # dt_number = len(window_meta_info_rows)
+                            # print(f'Количество найденных "dt" элементов: {dt_number}')
+                            for row in window_meta_info_rows:
+                                row_name = row.text
+                                try:
+                                    row_text = row.find_element_by_xpath('.//following::dd').text
+                                
+                                    if row_name: 
+                                        row_name_split = row_name.split(' ', 1)
+                                        if row_name_split[0] == 'Ключевые':
+                                            doc_inner_meta['keywords'] = row_text                                            
+                                        elif row_name_split[0] == 'Основание':
+                                            doc_inner_meta['justification'] = row_text
+                                        elif row_name_split[0] == 'Связанные':
+                                            doc_inner_meta['linked_docs'] = row_text
+                                        elif row_name_split[0] == 'Комментарий':
+                                            doc_inner_meta['comments'] = row_text                                        
+                                    else:
+                                        print(f'При выполнении сценария "Паспорт проекта" для проекта {doc_ID} не найден текст элемента "<dt>".')
+                                except:
+                                    print(f'При выполнении сценария "Паспорт проекта" для проекта {doc_ID} не найден элемент <dd>.')       
+                        except:
+                            print(f'При выполнении сценария "Паспорт проекта" для проекта {doc_ID} не найдены элементы "<dt>".')
+                        
+                        try:
+                            driver.find_element_by_xpath('.//a[@class="btn btn-primary closeBtn"]').click()
+                            time.sleep(2)
+                        except:
+                            print(f'Не могу закрыть окно "Паспорт проекта" для {doc_ID}!!!')
+
+                    except:
+                        print(f'В колонке "Паспорт проекта" для проекта {doc_ID} не найдена ссылка, содержащая слово "Паспорт".')
+             
+#_В случае с этапом "Независимая антикоррупционная экспертиза" ссылка на документ, как правило, спрятана в "скрытом" разделе "Информация по проекту". Она обнаруживается после запуска скрипта кликом на соответствующем элементе__
+#_!!!___________________TODO: Уточнить условие, при котором этот сценарий должен работать___________
+                elif column_name_split[0] == 'Независимая':                        
+                    try:
+                        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/a[@class="btn btn-default"]')))
+                        inner_element_name = col.find_element_by_xpath('.//a[@class="btn btn-default"]').text
+                        # print(f'Обращаемся к скрытому разделу: {inner_element_name}')
+                        col.find_element_by_xpath('.//a[@class="btn btn-default"]').click()                    
+                        time.sleep(2)
+                        try:
+                            WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'dd')))
+                            window_meta_info_rows = driver.find_elements_by_css_selector('dd')
+                            # dd_number = len(window_meta_info_rows)
+                            # print(f'Количество найденных "dd" элементов: {dd_number}')
+
+#_____________Анализируем открывшуюся таблицу построчно. Ищем ссылки с кодом для скачивания текстов документов.___
+                            text_number = 1
+                            file_row_link = False
+                            file_row_code = False
+                            for row in window_meta_info_rows:
+                                try:
+                                    a_row = row.find_element_by_xpath('.//a')
+                                    if a_row.get_attribute('onclick'):
+                                        doc_tobe_code = a_row.get_attribute('onclick')
+                                        doc_code = doc_tobe_code.split("'")[1] 
+                                        file_row_code = True
+                                        # print('Нашел onclick')
+                                    else:                                    
+                                        if a_row.get_attribute('href'):
+                                            doc_tobe_code = a_row.get_attribute('href')
+                                            doc_code = doc_tobe_code.split("=")[1]
+                                            file_row_link = True
+                                            # print('Нашел href')
+#_________Сохраняем полученные коды для скачивания документов и дополнительную информацию к ним__________                                 
+                                    doc_version_name = f'stage_{column_number}_version_2{text_number}'
+                                    if file_row_link == True or file_row_code == True:
+                                        doc_site_name = row.find_element_by_xpath('.//preceding::dt').text
+                                        full_doc_site_name = str(inner_element_name) + '-' + str(doc_site_name)
+                                        doc_version_element = {doc_version_name: doc_code}                        
+                                        doc_inner_meta['text_versions'].append(doc_version_element)
+                                        doc_version_name_element = {doc_version_name: full_doc_site_name}
+                                        doc_inner_meta['text_version_names'].append(doc_version_name_element)
+
+                                    else:
+                                        print('На странице НАЭ не нашел кода документа в ".//a"') 
+                                        doc_version_element = {doc_version_name: None}                        
+                                        doc_inner_meta['text_versions'].append(doc_version_element)
+                                    text_number += 1
+                                except:
+                                    file_row_link = False
+                                    file_row_code = False
+                        except:
+                            print(f'При выполнении сценария "Независимая антикор. эксп." для проекта {doc_ID} не найдены элементы "<dd>".')
+                        try:
+                            driver.find_element_by_xpath('.//a[@class="btn btn-primary closeBtn"]').click()
+                            time.sleep(2)
+                        except:
+                            print(f'Не могу закрыть окно "Независимая антикор. эксп." для {doc_ID}!!!')
+                    except:
+                        print(f'В колонке "Независимая антикор. эксп." для проекта {doc_ID} не найден класс "btn btn-default".')
+#_______________________Переходим к следующей колонке ________
                 column_number += 1
 
             if current_found == False:
                 print(f'Для документа {doc_ID} не определена текущая стадия разработки!')
-            
+#__Сохраняем мета-данные по проекту (с кодами для скачивания текстов) в оддельном файле, одном на проект документа_____            
             folder_name = config['DEFAULT']['DOCS_SUBDIRECTORY_NAME']
             doc_inner_meta_file_name = f'{folder_name}/{doc_ID}_metadata_{today_date_str}.json'
+            # doc_inner_meta_file_name = f'{folder_name}/{doc_ID}_metadata_test.json'
+
             with open(doc_inner_meta_file_name, 'w', encoding='utf-8') as d_file:
                 json.dump(doc_inner_meta, d_file, ensure_ascii=False)
-        
-        except Exception as ex:
-            print(f'Сетевая ошибка: {ex}')
-            return False
-        
-        download_doc_file(doc_inner_meta)
+#__Запускаем скачивание всех текстов документов по всем кодам на скачивание, собранным со страницы проекта___   
+         
+            download_doc_file(doc_inner_meta)
 
-        driver.quit()
+        except Exception as ex:
+            print(f'Ошибка при попытке найти на странице проекта столбцы (класс "h-tl-cols-wrap"): {ex}')
+    except Exception as ex:
+        print(f'Ошибка при обращении браузера к странице проекта: {ex}')
+
+    driver.quit()
 
 
 def doc_files_into_text():
@@ -370,8 +482,8 @@ if __name__ == "__main__":
 
     save_docs_list(docs_list)
 
-    # docs_list = upload_json('reg_pub_20210610_may_week.json')
+    docs_list = upload_json('reg_pub_test_20210615.json')
 
-    doc_inner_meta = get_doc_inner_meta(docs_list)
+    read_docs_list(docs_list)
 
     doc_files_into_text()
