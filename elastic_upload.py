@@ -359,55 +359,55 @@ def compose_upload_data_to_es(docs_list, index_name):
             version_download_timestamp = doc_inner_meta['timestamp']
             text_v_num = 1
             orv_v_num = 1
-            for version in text_versions_list:
-                
-                version_code = [*version.values()][0]
-                version_attrs = [*version][0]
-                version_file_name = f'{doc_ID}_{version_attrs}_{version_download_timestamp}.json'
+            if len(text_versions_list) > 0:
+                for version in text_versions_list:                    
+                    version_code = [*version.values()][0]
+                    version_attrs = [*version][0]
+                    version_file_name = f'{doc_ID}_{version_attrs}_{version_download_timestamp}.json'
 
-                if upload_doc_version_text(version_file_name):
-                    doc_version_text = upload_doc_version_text(version_file_name)
-                    version_stage = int(doc_version_text[0][0]["stage"])
-                    # print(f'{version_file_name} version_stage: {version_stage}')
-                    version_stage_name = doc_inner_meta["planned_stages"][version_stage - 1]
-                    # print(f'{version_file_name} version_stage_name: {version_stage_name}')
+                    if upload_doc_version_text(version_file_name):
+                        doc_version_text = upload_doc_version_text(version_file_name)
+                        version_stage = int(doc_version_text[0][0]["stage"])
+                        # print(f'{version_file_name} version_stage: {version_stage}')
+                        version_stage_name = doc_inner_meta["planned_stages"][version_stage - 1]
+                        # print(f'{version_file_name} version_stage_name: {version_stage_name}')
 
-                    version_site_names = doc_inner_meta["text_version_names"]
-                    for site_name in version_site_names:
-                        if [*site_name][0] == version_attrs:
-                            site_name_text = [*site_name.values()][0]
+                        version_site_names = doc_inner_meta["text_version_names"]
+                        for site_name in version_site_names:
+                            if [*site_name][0] == version_attrs:
+                                site_name_text = [*site_name.values()][0]
 
-                    version_stage_name_split = version_stage_name.split(' ')
-                    if 'ОРВ' in version_stage_name_split:
-                        orv_map_name = "ORV_" + str(orv_v_num)
-                        doc_dataset[orv_map_name] = {
-                            "ORV_stage": version_stage,
-                            "ORV_result": doc_inner_meta["procedure_result"],
-                            "ORV_version_name": site_name_text,
-                            "ORV_text_timestamp": doc_inner_meta["timestamp"],
-                            "ORV_download_code": version_code,
-                            "ORV_conclusion_text": str(doc_version_text)
-                        }
-                        orv_v_num += 1
+                        version_stage_name_split = version_stage_name.split(' ')
+                        if 'ОРВ' in version_stage_name_split:
+                            orv_map_name = "ORV_" + str(orv_v_num)
+                            doc_dataset[orv_map_name] = {
+                                "ORV_stage": version_stage,
+                                "ORV_result": doc_inner_meta["procedure_result"],
+                                "ORV_version_name": site_name_text,
+                                "ORV_text_timestamp": doc_inner_meta["timestamp"],
+                                "ORV_download_code": version_code,
+                                "ORV_conclusion_text": str(doc_version_text)
+                            }
+                            orv_v_num += 1
 
-                        print(f'{version_file_name} - текст на стадии "ОРВ".')
+                            print(f'{version_file_name} - текст на стадии "ОРВ".')
+
+                        else:
+                            text_map_name = "Text_version_" + str(text_v_num)
+                            doc_dataset[text_map_name] = {
+                                "version_stage": version_stage,
+                                "version_number_on_stage": int(doc_version_text[0][0]["stage_version"]),
+                                "text_version_name": site_name_text,
+                                "version_timestamp": doc_inner_meta["timestamp"],
+                                "version_download_code": version_code,
+                                "version_text": str(doc_version_text)
+                            }
+                            text_v_num += 1
+                            
+                            print(f'{version_file_name} - текст на стадии {version_stage_name}')
 
                     else:
-                        text_map_name = "Text_version_" + str(text_v_num)
-                        doc_dataset[text_map_name] = {
-                            "version_stage": version_stage,
-                            "version_number_on_stage": int(doc_version_text[0][0]["stage_version"]),
-                            "text_version_name": site_name_text,
-                            "version_timestamp": doc_inner_meta["timestamp"],
-                            "version_download_code": version_code,
-                            "version_text": str(doc_version_text)
-                        }
-                        text_v_num += 1
-                        
-                        print(f'{version_file_name} - текст на стадии {version_stage_name}')
-
-                else:
-                    raise Exception(f'Файл {doc_ID}_{version_attrs}_{version_download_timestamp}.json не загружен или не приведен к json-формату.')
+                        raise Exception(f'Файл {doc_ID}_{version_attrs}_{version_download_timestamp}.json не загружен или не приведен к json-формату.')
 
         # print(doc_dataset)
 
